@@ -49,8 +49,17 @@ function make2faCode(){ return String(crypto.randomInt(100000, 1000000)); }
 function gmailConfigured(){ return Boolean(process.env.GMAIL_USER && process.env.GMAIL_APP_PASSWORD); }
 function mailTransporter(){
   return nodemailer.createTransport({
-    service: 'gmail',
-    auth: { user: process.env.GMAIL_USER, pass: process.env.GMAIL_APP_PASSWORD }
+    host: 'smtp.gmail.com',
+    port: 587,
+    secure: false,
+    requireTLS: true,
+    auth: {
+      user: process.env.GMAIL_USER,
+      pass: String(process.env.GMAIL_APP_PASSWORD || '').replace(/\s/g, '')
+    },
+    connectionTimeout: 30000,
+    greetingTimeout: 30000,
+    socketTimeout: 30000
   });
 }
 async function send2faEmail(user, code){
@@ -432,4 +441,6 @@ io.on('connection',(socket)=>{
 });
 
 app.use((req,res)=>res.status(404).render('error',{msg:'Page introuvable'}));
-server.listen(PORT,()=>console.log('HighDevelopment lancé : http://localhost:'+PORT));
+server.listen(PORT, '0.0.0.0', () => {
+  console.log('HighDevelopment lancé sur le port ' + PORT);
+});
