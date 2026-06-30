@@ -1,11 +1,3 @@
 <%- include('../partials/header') %>
-<section class="auth">
-  <form method="post" class="panel">
-    <h1>Connexion</h1>
-    <% if(error){ %><p class="err"><%= error %></p><% } %>
-    <input name="email" type="email" placeholder="Adresse email" required>
-    <input name="password" type="password" placeholder="Mot de passe" required>
-    <button class="btn">Se connecter</button>
-  </form>
-</section>
+<section class="auth"><form class="panel" action="/auth/discord" method="get"><h1>Connexion</h1><p>Connecte-toi uniquement avec Discord pour accéder à HighDevelopment.</p><button class="btn" type="submit">Se connecter avec Discord</button></form></section>
 <%- include('../partials/footer') %>

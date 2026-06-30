@@ -363,91 +363,9 @@ app.get('/client',requireAuth,(req,res)=>{
   const invoices=db.invoices.filter(i=>i.user_id===req.session.user.id).sort((a,b)=>b.id-a.id);
   const licenses=db.licenses.filter(l=>l.user_id===req.session.user.id).sort((a,b)=>b.id-a.id);
   const tickets=db.tickets.filter(t=>t.user_id===req.session.user.id).sort((a,b)=>b.id-a.id);
-  const emailMessage=req.session.emailMessage || null;
-  const emailError=req.session.emailError || null;
-  const pendingEmailChange=req.session.pendingEmailChange || null;
-  req.session.emailMessage=null;
-  req.session.emailError=null;
-  res.render('client/index',{orders,invoices,licenses,tickets,emailMessage,emailError,pendingEmailChange});
+  res.render('client/index',{orders,invoices,licenses,tickets});
 });
 
-
-app.post('/client/email/request',requireAuth,async (req,res)=>{
-  const newEmail=String(req.body.new_email||'').trim().toLowerCase();
-  const currentUser=db.users.find(x=>x.id===req.session.user.id);
-  if(!currentUser){ return res.redirect('/login'); }
-  if(!/^\S+@\S+\.\S+$/.test(newEmail)){
-    req.session.emailError='Adresse e-mail invalide.';
-    return res.redirect('/client');
-  }
-  if(newEmail===currentUser.email.toLowerCase()){
-    req.session.emailError='Cette adresse est déjà votre adresse actuelle.';
-    return res.redirect('/client');
-  }
-  if(db.users.find(u=>u.email.toLowerCase()===newEmail)){
-    req.session.emailError='Cette adresse e-mail est déjà utilisée.';
-    return res.redirect('/client');
-  }
-  try{
-    const code=make2faCode();
-    req.session.pendingEmailChange={
-      userId:currentUser.id,
-      oldEmail:currentUser.email,
-      newEmail,
-      codeHash:bcrypt.hashSync(code,10),
-      attempts:0,
-      createdAt:Date.now(),
-      expiresAt:Date.now()+5*60*1000
-    };
-    await sendEmailChangeCodeEmail(newEmail,code);
-    req.session.emailMessage='Code de confirmation envoyé à la nouvelle adresse.';
-  }catch(e){
-    console.error('Email change code error:', e.message);
-    req.session.emailError='Impossible d’envoyer le code. Vérifie les variables Gmail.';
-  }
-  res.redirect('/client');
-});
-
-app.post('/client/email/confirm',requireAuth,async (req,res)=>{
-  const pending=req.session.pendingEmailChange;
-  const code=String(req.body.code||'').replace(/\D/g,'').slice(0,6);
-  if(!pending || pending.userId!==req.session.user.id){
-    req.session.emailError='Aucune demande de changement d’e-mail en attente.';
-    return res.redirect('/client');
-  }
-  if(Date.now()>pending.expiresAt){
-    req.session.pendingEmailChange=null;
-    req.session.emailError='Code expiré. Recommence la modification.';
-    return res.redirect('/client');
-  }
-  if((pending.attempts||0)>=5){
-    req.session.pendingEmailChange=null;
-    req.session.emailError='Trop de tentatives. Recommence la modification.';
-    return res.redirect('/client');
-  }
-  if(!bcrypt.compareSync(code,pending.codeHash)){
-    pending.attempts=(pending.attempts||0)+1;
-    req.session.pendingEmailChange=pending;
-    req.session.emailError='Code incorrect.';
-    return res.redirect('/client');
-  }
-  if(db.users.find(u=>u.id!==pending.userId && u.email.toLowerCase()===pending.newEmail.toLowerCase())){
-    req.session.pendingEmailChange=null;
-    req.session.emailError='Cette adresse e-mail est déjà utilisée.';
-    return res.redirect('/client');
-  }
-  const user=db.users.find(u=>u.id===pending.userId);
-  if(user){
-    const oldEmail=user.email;
-    user.email=pending.newEmail;
-    saveDb();
-    await sendEmailChangedNotice(oldEmail,pending.newEmail);
-    req.session.user=publicUser(user);
-    req.session.emailMessage='Adresse e-mail modifiée avec succès.';
-  }
-  req.session.pendingEmailChange=null;
-  res.redirect('/client');
-});
 
 
 app.get('/tickets',requireAuth,(req,res)=>{ const isStaff=['Owner','Admin','Modo'].includes(req.session.user.role); const tickets=(isStaff?db.tickets:db.tickets.filter(t=>t.user_id===req.session.user.id)).map(t=>({...t,email:(db.users.find(u=>u.id===t.user_id)||{}).email})).sort((a,b)=>b.id-a.id); res.render('tickets/list',{tickets}); });

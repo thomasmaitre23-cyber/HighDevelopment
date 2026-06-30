@@ -1,1 +1,3 @@
-<%- include('../partials/header') %><section class="auth"><form method="post" class="panel"><h1>Créer un compte</h1><% if(error){ %><p class="err"><%= error %></p><% } %><input name="username" placeholder="Pseudo"><input name="email" type="email" placeholder="Adresse email" required><input name="password" type="password" placeholder="Mot de passe" required><button class="btn">Inscription</button></form></section><%- include('../partials/footer') %>
+<%- include('../partials/header') %>
+<section class="auth"><form class="panel" action="/auth/discord" method="get"><h1>Créer un compte</h1><p>La création de compte se fait automatiquement via Discord.</p><button class="btn" type="submit">Continuer avec Discord</button></form></section>
+<%- include('../partials/footer') %>

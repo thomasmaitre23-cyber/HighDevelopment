@@ -9,21 +9,14 @@
   </div>
 
   <h2 id="profil">👤 Mon profil</h2>
-  <% if(emailMessage){ %><p class="ok"><%= emailMessage %></p><% } %>
-  <% if(emailError){ %><p class="err"><%= emailError %></p><% } %>
-  <div class="card soft-card">
-    <p><b>Adresse e-mail actuelle :</b> <%= user.email %></p>
-    <form method="post" action="/client/email/request" class="inline-form">
-      <input name="new_email" type="email" placeholder="Nouvelle adresse e-mail" required>
-      <button class="btn">Envoyer le code</button>
-    </form>
-    <% if(pendingEmailChange){ %>
-      <form method="post" action="/client/email/confirm" class="inline-form verify-mail">
-        <p>Un code a été envoyé à <b><%= pendingEmailChange.newEmail %></b>.</p>
-        <input name="code" inputmode="numeric" maxlength="6" placeholder="Code à 6 chiffres" required>
-        <button class="btn">Confirmer l’e-mail</button>
-      </form>
-    <% } %>
+  <div class="card soft-card profile-card">
+    <img class="profile-big-avatar" src="<%= user.avatar || '/img/logo.png' %>" alt="Avatar">
+    <div>
+      <p><b>Pseudo :</b> <%= user.username || 'Utilisateur Discord' %></p>
+      <p><b>Adresse e-mail :</b> <%= user.email || 'Non fournie par Discord' %></p>
+      <p><b>Rôle :</b> <span class="badge"><%= user.role %></span></p>
+      <small>La connexion se fait uniquement avec Discord.</small>
+    </div>
   </div>
 
   <h2 id="orders">Commandes</h2>
