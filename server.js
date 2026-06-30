@@ -50,18 +50,19 @@ function gmailConfigured(){ return Boolean(process.env.GMAIL_USER && process.env
 function mailTransporter(){
   return nodemailer.createTransport({
     host: 'smtp.gmail.com',
-    port: 587,
-    secure: false,
-    requireTLS: true,
+    port: 465,
+    secure: true,
+    family: 4,
+    connectionTimeout: 30000,
+    greetingTimeout: 30000,
+    socketTimeout: 30000,
     auth: {
       user: process.env.GMAIL_USER,
       pass: String(process.env.GMAIL_APP_PASSWORD || '').replace(/\s/g, '')
-    },
-    connectionTimeout: 30000,
-    greetingTimeout: 30000,
-    socketTimeout: 30000
+    }
   });
 }
+
 async function send2faEmail(user, code){
   if(!gmailConfigured()) throw new Error('Variables Gmail manquantes sur Railway');
   await mailTransporter().sendMail({
@@ -180,7 +181,8 @@ app.get('/boutique',(req,res)=>res.render('boutique',{products:db.products}));
 app.get('/login',(req,res)=>res.render('auth/login',{error:null}));
 
 app.post('/login', async (req,res)=>{
-  const u=db.users.find(x=>x.email===req.body.email);
+  const loginEmail = String(req.body.email || '').trim().toLowerCase();
+  const u=db.users.find(x=>String(x.email || '').toLowerCase()===loginEmail);
   if(!u||!bcrypt.compareSync(req.body.password,u.password)) return res.render('auth/login',{error:'Email ou mot de passe incorrect.'});
   if(u.role === 'Banni') return res.render('auth/login',{error:'Compte banni.'});
   try{
@@ -232,9 +234,13 @@ app.post('/verify/resend', async (req,res)=>{
 app.get('/register',(req,res)=>res.render('auth/register',{error:null}));
 
 app.post('/register', async (req,res)=>{
-  if(db.users.find(u=>u.email===req.body.email)) return res.render('auth/register',{error:'Email déjà utilisé.'});
-  const username=req.body.username||req.body.email.split('@')[0];
-  const u={id:nextId('users'),email:req.body.email,password:bcrypt.hashSync(req.body.password,10),role:'Membre',username,avatar:'/img/logo.png',created_at:now(),last_login:null};
+  const email = String(req.body.email || '').trim().toLowerCase();
+  const password = String(req.body.password || '');
+  if(!/^\S+@\S+\.\S+$/.test(email)) return res.render('auth/register',{error:'Adresse e-mail invalide.'});
+  if(password.length < 4) return res.render('auth/register',{error:'Mot de passe trop court.'});
+  if(db.users.find(u=>String(u.email || '').toLowerCase()===email)) return res.render('auth/register',{error:'Email déjà utilisé.'});
+  const username=String(req.body.username || email.split('@')[0]).trim() || email.split('@')[0];
+  const u={id:nextId('users'),email,password:bcrypt.hashSync(password,10),role:'Membre',username,avatar:'/img/logo.png',created_at:now(),last_login:null};
   db.users.push(u); saveDb();
   try{
     startPending2fa(req,u);
