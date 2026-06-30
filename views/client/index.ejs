@@ -9,13 +9,13 @@
   </div>
 
   <h2 id="profil">👤 Mon profil</h2>
-  <div class="card soft-card profile-card">
-    <img class="profile-big-avatar" src="<%= user.avatar || '/img/logo.png' %>" alt="Avatar">
+  <div class="card soft-card profile-card compact-profile-card">
+    <img class="profile-small-avatar" src="<%= user.avatar || '/img/logo.png' %>" alt="Avatar Discord">
     <div>
-      <p><b>Pseudo :</b> <%= user.username || 'Utilisateur Discord' %></p>
+      <p><b>Pseudo Discord :</b> <%= user.username || 'Utilisateur Discord' %></p>
       <p><b>Adresse e-mail :</b> <%= user.email || 'Non fournie par Discord' %></p>
-      <p><b>Rôle :</b> <span class="badge"><%= user.role %></span></p>
-      <small>La connexion se fait uniquement avec Discord.</small>
+      <p><b>Rôle synchronisé :</b> <span class="badge"><%= user.role %></span></p>
+      <small>Le rôle est automatiquement synchronisé avec le Discord HighDevelopment à chaque connexion.</small>
     </div>
   </div>
 

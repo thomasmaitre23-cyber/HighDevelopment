@@ -39,7 +39,7 @@ function recomputeStats(){
   const revenue = db.orders.filter(o=>isRevenueStatus(o.status)).reduce((sum,o)=>sum+moneyValue(o.total),0);
   return {users:db.users.length,tickets:db.tickets.length,openTickets:db.tickets.filter(t=>t.status==='Ouvert').length,orders:db.orders.length,finishedOrders:db.orders.filter(o=>o.status==='Terminée').length,revenue:formatEuro(revenue)};
 }
-function publicUser(u){ return u ? {id:u.id,email:u.email,role:u.role,username:u.username,avatar:u.avatar} : null; }
+function publicUser(u){ return u ? {id:u.id,email:u.email,role:u.role,username:u.username,avatar:u.avatar,discord_id:u.discord_id||null} : null; }
 
 function clean2faCodes(){
   const t = Date.now();
@@ -139,6 +139,25 @@ function discordConfigured(){
   return Boolean(process.env.DISCORD_CLIENT_ID && process.env.DISCORD_CLIENT_SECRET && process.env.DISCORD_CALLBACK_URL);
 }
 
+const DISCORD_ROLE_IDS = {
+  allPerm: ['1521513403779121152', '1519768720581333232'],
+  modo: ['1519768721856659517'],
+  support: ['1520104798060412948'],
+  member: ['1519768729100091484']
+};
+
+function hasAnyRole(memberRoles, ids){
+  return ids.some(id => memberRoles.includes(id));
+}
+
+function syncedSiteRole(member){
+  const roles = (member && member.roles) ? member.roles.map(String) : [];
+  if(hasAnyRole(roles, DISCORD_ROLE_IDS.allPerm)) return 'Owner';
+  if(hasAnyRole(roles, DISCORD_ROLE_IDS.modo)) return 'Modo';
+  if(hasAnyRole(roles, DISCORD_ROLE_IDS.support)) return 'Support';
+  return 'Membre';
+}
+
 function discordAvatarUrl(discordUser){
   if(!discordUser.avatar) return '/img/logo.png';
   return `https://cdn.discordapp.com/avatars/${discordUser.id}/${discordUser.avatar}.png?size=256`;
@@ -149,7 +168,7 @@ function discordOauthUrl(){
     client_id: process.env.DISCORD_CLIENT_ID,
     redirect_uri: process.env.DISCORD_CALLBACK_URL,
     response_type: 'code',
-    scope: 'identify email',
+    scope: 'identify email guilds.members.read',
     prompt: 'none'
   });
   return `https://discord.com/oauth2/authorize?${params.toString()}`;
@@ -184,10 +203,22 @@ async function exchangeDiscordCode(code){
     throw new Error(discordUser.message || 'Impossible de récupérer le profil Discord');
   }
 
-  return discordUser;
+  if(!process.env.DISCORD_GUILD_ID){
+    throw new Error('DISCORD_GUILD_ID manquant dans Railway. Ajoute l’ID du serveur HighDevelopment.');
+  }
+
+  const memberRes = await fetch(`https://discord.com/api/users/@me/guilds/${process.env.DISCORD_GUILD_ID}/member`, {
+    headers: { Authorization: `Bearer ${tokenData.access_token}` }
+  });
+  const member = await memberRes.json();
+  if(!memberRes.ok){
+    throw new Error('Tu dois être sur le Discord HighDevelopment pour te connecter.');
+  }
+
+  return { discordUser, member };
 }
 
-function findOrCreateDiscordUser(discordUser){
+function findOrCreateDiscordUser(discordUser, member){
   const discordId = String(discordUser.id);
   let user = db.users.find(u => String(u.discord_id || '') === discordId);
 
@@ -203,16 +234,15 @@ function findOrCreateDiscordUser(discordUser){
     user.email = user.email || discordEmail;
     user.username = discordUsername;
     user.avatar = discordAvatarUrl(discordUser);
+    user.role = syncedSiteRole(member);
+    user.discord_roles = member.roles || [];
     user.last_login = now();
     db.login_history.push({id:nextId('login_history'),user_id:user.id,ip:'Discord OAuth',date:now()});
     saveDb();
     return user;
   }
 
-  const discordUsersCount = db.users.filter(u => u.discord_id).length;
-  const role = (process.env.DISCORD_OWNER_ID && process.env.DISCORD_OWNER_ID === discordId) || (!process.env.DISCORD_OWNER_ID && discordUsersCount === 0)
-    ? 'Owner'
-    : 'Membre';
+  const role = syncedSiteRole(member);
 
   user = {
     id: nextId('users'),
@@ -222,6 +252,7 @@ function findOrCreateDiscordUser(discordUser){
     username: discordUsername,
     avatar: discordAvatarUrl(discordUser),
     discord_id: discordId,
+    discord_roles: member.roles || [],
     created_at: now(),
     last_login: now()
   };
@@ -269,7 +300,10 @@ const TRANSCRIPT_WEBHOOK = 'https://canary.discord.com/api/webhooks/152154272726
 
 
 function requireAuth(req,res,next){ if(!req.session.user) return res.redirect('/login'); next(); }
-function staff(req,res,next){ if(!req.session.user || !['Owner','Admin','Modo'].includes(req.session.user.role)) return res.status(403).render('error',{msg:'Accès refusé'}); next(); }
+function hasStaffPanel(role){ return ['Owner','Admin','Modo'].includes(role); }
+function hasTicketPerm(role){ return ['Owner','Admin','Modo','Support'].includes(role); }
+function staff(req,res,next){ if(!req.session.user || !hasStaffPanel(req.session.user.role)) return res.status(403).render('error',{msg:'Accès refusé'}); next(); }
+function ticketStaff(req,res,next){ if(!req.session.user || !hasTicketPerm(req.session.user.role)) return res.status(403).render('error',{msg:'Accès refusé'}); next(); }
 function admin(req,res,next){ if(!req.session.user || !['Owner','Admin'].includes(req.session.user.role)) return res.status(403).render('error',{msg:'Permission Owner/Admin requise'}); next(); }
 function canBan(role){ return ['Owner','Admin','Modo'].includes(role); }
 function refreshUser(req){ if(req.session.user){ const u=db.users.find(x=>x.id===req.session.user.id); if(u) req.session.user=publicUser(u); }}
@@ -287,8 +321,8 @@ app.get('/auth/discord/callback', async (req,res)=>{
   try{
     if(!discordConfigured()) return res.status(500).render('error',{msg:'Connexion Discord non configurée.'});
     if(!req.query.code) return res.redirect('/');
-    const discordUser = await exchangeDiscordCode(String(req.query.code));
-    const user = findOrCreateDiscordUser(discordUser);
+    const { discordUser, member } = await exchangeDiscordCode(String(req.query.code));
+    const user = findOrCreateDiscordUser(discordUser, member);
     if(user.role === 'Banni') return res.status(403).render('error',{msg:'Compte banni.'});
     req.session.user = publicUser(user);
     res.redirect('/dashboard');
@@ -368,9 +402,9 @@ app.get('/client',requireAuth,(req,res)=>{
 
 
 
-app.get('/tickets',requireAuth,(req,res)=>{ const isStaff=['Owner','Admin','Modo'].includes(req.session.user.role); const tickets=(isStaff?db.tickets:db.tickets.filter(t=>t.user_id===req.session.user.id)).map(t=>({...t,email:(db.users.find(u=>u.id===t.user_id)||{}).email})).sort((a,b)=>b.id-a.id); res.render('tickets/list',{tickets}); });
+app.get('/tickets',requireAuth,(req,res)=>{ const isStaff=hasTicketPerm(req.session.user.role); const tickets=(isStaff?db.tickets:db.tickets.filter(t=>t.user_id===req.session.user.id)).map(t=>({...t,email:(db.users.find(u=>u.id===t.user_id)||{}).email})).sort((a,b)=>b.id-a.id); res.render('tickets/list',{tickets}); });
 app.post('/tickets',requireAuth,(req,res)=>{ const t={id:nextId('tickets'),user_id:req.session.user.id,subject:req.body.subject||'Ticket support',status:'Ouvert',created_at:now(),updated_at:now()}; db.tickets.push(t); saveDb(); res.redirect('/tickets/'+t.id); });
-app.get('/tickets/:id',requireAuth,(req,res)=>{ const t=db.tickets.find(x=>x.id===Number(req.params.id)); if(!t) return res.status(404).render('error',{msg:'Ticket introuvable'}); if(t.user_id!==req.session.user.id && !['Owner','Admin','Modo'].includes(req.session.user.role)) return res.status(403).render('error',{msg:'Accès refusé'}); const owner=db.users.find(u=>u.id===t.user_id); const ticket={...t,email:owner?.email}; const messages=db.ticket_messages.filter(m=>m.ticket_id===t.id).map(m=>{const u=db.users.find(x=>x.id===m.user_id)||{}; return {...m,username:u.username,role:u.role,avatar:u.avatar};}); res.render('tickets/show',{ticket,messages}); });
+app.get('/tickets/:id',requireAuth,(req,res)=>{ const t=db.tickets.find(x=>x.id===Number(req.params.id)); if(!t) return res.status(404).render('error',{msg:'Ticket introuvable'}); if(t.user_id!==req.session.user.id && !hasTicketPerm(req.session.user.role)) return res.status(403).render('error',{msg:'Accès refusé'}); const owner=db.users.find(u=>u.id===t.user_id); const ticket={...t,email:owner?.email}; const messages=db.ticket_messages.filter(m=>m.ticket_id===t.id).map(m=>{const u=db.users.find(x=>x.id===m.user_id)||{}; return {...m,username:u.username,role:u.role,avatar:u.avatar};}); res.render('tickets/show',{ticket,messages}); });
 
 async function sendTranscript(ticket){
   try{
@@ -386,7 +420,7 @@ async function sendTranscript(ticket){
     await fetch(TRANSCRIPT_WEBHOOK,{method:'POST',body:form});
   }catch(e){ console.error('Erreur webhook transcript:', e.message); }
 }
-app.post('/tickets/:id/close',staff,async (req,res)=>{
+app.post('/tickets/:id/close',ticketStaff,async (req,res)=>{
   const ticketId = Number(req.params.id);
   const t=db.tickets.find(x=>x.id===ticketId);
   if(t){
@@ -407,7 +441,7 @@ app.post('/tickets/:id/close',staff,async (req,res)=>{
 app.post('/tickets/:id/upload',requireAuth,upload.single('image'),(req,res)=>{
   const t=db.tickets.find(x=>x.id===Number(req.params.id));
   if(!t || !req.file) return res.status(400).json({error:'Upload impossible'});
-  if(t.user_id!==req.session.user.id && !['Owner','Admin','Modo'].includes(req.session.user.role)) return res.status(403).json({error:'Accès refusé'});
+  if(t.user_id!==req.session.user.id && !hasTicketPerm(req.session.user.role)) return res.status(403).json({error:'Accès refusé'});
   const u=db.users.find(x=>x.id===req.session.user.id);
   const imageUrl='/uploads/'+req.file.filename;
   const msg={id:nextId('ticket_messages'),ticket_id:t.id,user_id:u.id,message:'Image envoyée',image_url:imageUrl,type:'image',created_at:now()};
@@ -418,7 +452,7 @@ app.post('/tickets/:id/upload',requireAuth,upload.single('image'),(req,res)=>{
 
 app.get('/staff',staff,(req,res)=>{ const stats=recomputeStats(); res.render('staff/index',{stats}); });
 app.get('/staff/users',staff,(req,res)=>{res.render('staff/users',{users:[...db.users].sort((a,b)=>b.id-a.id), canManage:['Owner','Admin'].includes(req.session.user.role), canBan:canBan(req.session.user.role)});});
-app.post('/staff/users/:id/role',admin,(req,res)=>{ const u=db.users.find(x=>x.id===Number(req.params.id)); const roles=['Admin','Modo','Membre']; if(req.session.user.role==='Owner') roles.push('Owner'); if(u&&roles.includes(req.body.role)){ u.role=req.body.role; saveDb(); } res.redirect('/staff/users'); });
+app.post('/staff/users/:id/role',admin,(req,res)=>{ const u=db.users.find(x=>x.id===Number(req.params.id)); const roles=['Admin','Modo','Support','Membre']; if(req.session.user.role==='Owner') roles.push('Owner'); if(u&&roles.includes(req.body.role)){ u.role=req.body.role; saveDb(); } res.redirect('/staff/users'); });
 app.post('/staff/users/:id/ban',staff,(req,res)=>{ const u=db.users.find(x=>x.id===Number(req.params.id)); if(u&&canBan(req.session.user.role)){ u.role='Banni'; saveDb();} res.redirect('/staff/users'); });
 app.get('/staff/orders',staff,(req,res)=>{ const orders=db.orders.map(o=>({...o,email:(db.users.find(u=>u.id===o.user_id)||{}).email,name:(db.products.find(p=>p.id===o.product_id)||{}).name})).sort((a,b)=>b.id-a.id); res.render('staff/orders',{orders}); });
 app.post('/staff/orders/:id/status',staff,(req,res)=>{

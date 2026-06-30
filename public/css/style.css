@@ -13,3 +13,9 @@
 .profile-card{display:flex;align-items:center;gap:18px}
 .profile-big-avatar{width:96px;height:96px;border-radius:24px;object-fit:cover;border:2px solid rgba(26,168,255,.45);box-shadow:0 0 24px rgba(26,168,255,.22)}
 @media(max-width:850px){.profile-card{flex-direction:column;align-items:flex-start}.nav-profile span{display:none}}
+
+/* Profil Discord compact */
+.compact-profile-card{display:flex;align-items:center;gap:18px;overflow:hidden}
+.profile-small-avatar{width:72px;height:72px;min-width:72px;border-radius:18px;object-fit:cover;border:2px solid rgba(26,168,255,.55);box-shadow:0 0 18px rgba(26,168,255,.22)}
+.profile-card img.profile-big-avatar{width:72px;height:72px;min-width:72px;border-radius:18px}
+@media(max-width:850px){.compact-profile-card{flex-direction:row;align-items:center}.profile-small-avatar{width:56px;height:56px;min-width:56px}}
