@@ -8,7 +8,6 @@ const http = require('http');
 const { Server } = require('socket.io');
 const multer = require('multer');
 const fs = require('fs');
-const nodemailer = require('nodemailer');
 const crypto = require('crypto');
 
 const app = express();
@@ -46,27 +45,33 @@ function clean2faCodes(){
   db.twofa_codes = (db.twofa_codes || []).filter(c => new Date(c.expires_at).getTime() > t && (c.attempts || 0) < 5);
 }
 function make2faCode(){ return String(crypto.randomInt(100000, 1000000)); }
-function gmailConfigured(){ return Boolean(process.env.GMAIL_USER && process.env.GMAIL_APP_PASSWORD); }
-function mailTransporter(){
-  return nodemailer.createTransport({
-    host: 'smtp.gmail.com',
-    port: 465,
-    secure: true,
-    family: 4,
-    connectionTimeout: 30000,
-    greetingTimeout: 30000,
-    socketTimeout: 30000,
-    auth: {
-      user: process.env.GMAIL_USER,
-      pass: String(process.env.GMAIL_APP_PASSWORD || '').replace(/\s/g, '')
-    }
+function resendConfigured(){ return Boolean(process.env.RESEND_API_KEY); }
+function mailFrom(){ return process.env.MAIL_FROM || 'HighDevelopment <onboarding@resend.dev>'; }
+async function sendResendMail({ to, subject, html }){
+  if(!resendConfigured()) throw new Error('Variable RESEND_API_KEY manquante sur Railway');
+  const response = await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${process.env.RESEND_API_KEY}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      from: mailFrom(),
+      to: [to],
+      subject,
+      html
+    })
   });
+
+  const text = await response.text();
+  if(!response.ok){
+    throw new Error(`Erreur Resend ${response.status}: ${text}`);
+  }
+  return text;
 }
 
 async function send2faEmail(user, code){
-  if(!gmailConfigured()) throw new Error('Variables Gmail manquantes sur Railway');
-  await mailTransporter().sendMail({
-    from: `"HighDevelopment Sécurité" <${process.env.GMAIL_USER}>`,
+  await sendResendMail({
     to: user.email,
     subject: 'Code de connexion HighDevelopment',
     html: `
@@ -80,9 +85,7 @@ async function send2faEmail(user, code){
   });
 }
 async function sendEmailChangeCodeEmail(to, code){
-  if(!gmailConfigured()) throw new Error('Variables Gmail manquantes');
-  await mailTransporter().sendMail({
-    from: `"HighDevelopment Sécurité" <${process.env.GMAIL_USER}>`,
+  await sendResendMail({
     to,
     subject: 'Code de changement d’adresse e-mail HighDevelopment',
     html: `
@@ -96,10 +99,9 @@ async function sendEmailChangeCodeEmail(to, code){
   });
 }
 async function sendEmailChangedNotice(to, newEmail){
-  if(!gmailConfigured()) return;
+  if(!resendConfigured()) return;
   try{
-    await mailTransporter().sendMail({
-      from: `"HighDevelopment Sécurité" <${process.env.GMAIL_USER}>`,
+    await sendResendMail({
       to,
       subject: 'Adresse e-mail HighDevelopment modifiée',
       html: `
@@ -191,7 +193,7 @@ app.post('/login', async (req,res)=>{
     res.redirect('/verify');
   }catch(e){
     console.error('2FA send error:', e.message);
-    return res.render('auth/login',{error:'Impossible d’envoyer le code A2F. Vérifie les variables Gmail Railway.'});
+    return res.render('auth/login',{error:'Impossible d’envoyer le code A2F. Vérifie RESEND_API_KEY sur Railway.'});
   }
 });
 app.get('/verify',(req,res)=>{
@@ -249,7 +251,7 @@ app.post('/register', async (req,res)=>{
   }catch(e){
     console.error('2FA send error:', e.message);
     db.users = db.users.filter(x=>x.id!==u.id); saveDb();
-    res.render('auth/register',{error:'Compte créé impossible : envoi du code A2F impossible. Vérifie Gmail Railway.'});
+    res.render('auth/register',{error:'Compte créé impossible : envoi du code A2F impossible. Vérifie RESEND_API_KEY sur Railway.'});
   }
 });
 
@@ -317,7 +319,7 @@ app.post('/client/email/request',requireAuth,async (req,res)=>{
     req.session.emailMessage='Code de confirmation envoyé à la nouvelle adresse.';
   }catch(e){
     console.error('Email change code error:', e.message);
-    req.session.emailError='Impossible d’envoyer le code. Vérifie les variables Gmail.';
+    req.session.emailError='Impossible d’envoyer le code. Vérifie RESEND_API_KEY sur Railway.';
   }
   res.redirect('/client');
 });
