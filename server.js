@@ -8,6 +8,7 @@ const http = require('http');
 const { Server } = require('socket.io');
 const multer = require('multer');
 const fs = require('fs');
+const nodemailer = require('nodemailer');
 const crypto = require('crypto');
 
 const app = express();
@@ -45,33 +46,27 @@ function clean2faCodes(){
   db.twofa_codes = (db.twofa_codes || []).filter(c => new Date(c.expires_at).getTime() > t && (c.attempts || 0) < 5);
 }
 function make2faCode(){ return String(crypto.randomInt(100000, 1000000)); }
-function resendConfigured(){ return Boolean(process.env.RESEND_API_KEY); }
-function mailFrom(){ return process.env.MAIL_FROM || 'HighDevelopment <onboarding@resend.dev>'; }
-async function sendResendMail({ to, subject, html }){
-  if(!resendConfigured()) throw new Error('Variable RESEND_API_KEY manquante sur Railway');
-  const response = await fetch('https://api.resend.com/emails', {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${process.env.RESEND_API_KEY}`,
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({
-      from: mailFrom(),
-      to: [to],
-      subject,
-      html
-    })
+function gmailConfigured(){ return Boolean(process.env.GMAIL_USER && process.env.GMAIL_APP_PASSWORD); }
+function mailTransporter(){
+  return nodemailer.createTransport({
+    host: 'smtp.gmail.com',
+    port: 465,
+    secure: true,
+    family: 4,
+    connectionTimeout: 30000,
+    greetingTimeout: 30000,
+    socketTimeout: 30000,
+    auth: {
+      user: process.env.GMAIL_USER,
+      pass: String(process.env.GMAIL_APP_PASSWORD || '').replace(/\s/g, '')
+    }
   });
-
-  const text = await response.text();
-  if(!response.ok){
-    throw new Error(`Erreur Resend ${response.status}: ${text}`);
-  }
-  return text;
 }
 
 async function send2faEmail(user, code){
-  await sendResendMail({
+  if(!gmailConfigured()) throw new Error('Variables Gmail manquantes sur Railway');
+  await mailTransporter().sendMail({
+    from: `"HighDevelopment Sécurité" <${process.env.GMAIL_USER}>`,
     to: user.email,
     subject: 'Code de connexion HighDevelopment',
     html: `
@@ -85,7 +80,9 @@ async function send2faEmail(user, code){
   });
 }
 async function sendEmailChangeCodeEmail(to, code){
-  await sendResendMail({
+  if(!gmailConfigured()) throw new Error('Variables Gmail manquantes');
+  await mailTransporter().sendMail({
+    from: `"HighDevelopment Sécurité" <${process.env.GMAIL_USER}>`,
     to,
     subject: 'Code de changement d’adresse e-mail HighDevelopment',
     html: `
@@ -99,9 +96,10 @@ async function sendEmailChangeCodeEmail(to, code){
   });
 }
 async function sendEmailChangedNotice(to, newEmail){
-  if(!resendConfigured()) return;
+  if(!gmailConfigured()) return;
   try{
-    await sendResendMail({
+    await mailTransporter().sendMail({
+      from: `"HighDevelopment Sécurité" <${process.env.GMAIL_USER}>`,
       to,
       subject: 'Adresse e-mail HighDevelopment modifiée',
       html: `
@@ -134,6 +132,104 @@ async function createAndSend2fa(req, user){
 }
 function startPending2fa(req, user){
   req.session.pending2fa = { userId:user.id, email:user.email, createdAt:Date.now() };
+}
+
+
+function discordConfigured(){
+  return Boolean(process.env.DISCORD_CLIENT_ID && process.env.DISCORD_CLIENT_SECRET && process.env.DISCORD_CALLBACK_URL);
+}
+
+function discordAvatarUrl(discordUser){
+  if(!discordUser.avatar) return '/img/logo.png';
+  return `https://cdn.discordapp.com/avatars/${discordUser.id}/${discordUser.avatar}.png?size=256`;
+}
+
+function discordOauthUrl(){
+  const params = new URLSearchParams({
+    client_id: process.env.DISCORD_CLIENT_ID,
+    redirect_uri: process.env.DISCORD_CALLBACK_URL,
+    response_type: 'code',
+    scope: 'identify email',
+    prompt: 'none'
+  });
+  return `https://discord.com/oauth2/authorize?${params.toString()}`;
+}
+
+async function exchangeDiscordCode(code){
+  const body = new URLSearchParams({
+    client_id: process.env.DISCORD_CLIENT_ID,
+    client_secret: process.env.DISCORD_CLIENT_SECRET,
+    grant_type: 'authorization_code',
+    code,
+    redirect_uri: process.env.DISCORD_CALLBACK_URL
+  });
+
+  const tokenRes = await fetch('https://discord.com/api/oauth2/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body
+  });
+
+  const tokenData = await tokenRes.json();
+  if(!tokenRes.ok){
+    throw new Error(tokenData.error_description || tokenData.error || 'Erreur OAuth Discord');
+  }
+
+  const userRes = await fetch('https://discord.com/api/users/@me', {
+    headers: { Authorization: `Bearer ${tokenData.access_token}` }
+  });
+
+  const discordUser = await userRes.json();
+  if(!userRes.ok){
+    throw new Error(discordUser.message || 'Impossible de récupérer le profil Discord');
+  }
+
+  return discordUser;
+}
+
+function findOrCreateDiscordUser(discordUser){
+  const discordId = String(discordUser.id);
+  let user = db.users.find(u => String(u.discord_id || '') === discordId);
+
+  if(!user && discordUser.email){
+    user = db.users.find(u => String(u.email || '').toLowerCase() === String(discordUser.email).toLowerCase());
+  }
+
+  const discordUsername = discordUser.global_name || discordUser.username || 'Utilisateur Discord';
+  const discordEmail = discordUser.email || `${discordId}@discord.local`;
+
+  if(user){
+    user.discord_id = discordId;
+    user.email = user.email || discordEmail;
+    user.username = discordUsername;
+    user.avatar = discordAvatarUrl(discordUser);
+    user.last_login = now();
+    db.login_history.push({id:nextId('login_history'),user_id:user.id,ip:'Discord OAuth',date:now()});
+    saveDb();
+    return user;
+  }
+
+  const discordUsersCount = db.users.filter(u => u.discord_id).length;
+  const role = (process.env.DISCORD_OWNER_ID && process.env.DISCORD_OWNER_ID === discordId) || (!process.env.DISCORD_OWNER_ID && discordUsersCount === 0)
+    ? 'Owner'
+    : 'Membre';
+
+  user = {
+    id: nextId('users'),
+    email: discordEmail,
+    password: bcrypt.hashSync(crypto.randomBytes(32).toString('hex'), 10),
+    role,
+    username: discordUsername,
+    avatar: discordAvatarUrl(discordUser),
+    discord_id: discordId,
+    created_at: now(),
+    last_login: now()
+  };
+
+  db.users.push(user);
+  db.login_history.push({id:nextId('login_history'),user_id:user.id,ip:'Discord OAuth',date:now()});
+  saveDb();
+  return user;
 }
 
 function initDb(){
@@ -180,22 +276,29 @@ function refreshUser(req){ if(req.session.user){ const u=db.users.find(x=>x.id==
 
 app.get('/',(req,res)=>{ const stats={members:db.users.length, projects:db.orders.length, reviews:27}; res.render('home',{stats}); });
 app.get('/boutique',(req,res)=>res.render('boutique',{products:db.products}));
-app.get('/login',(req,res)=>res.render('auth/login',{error:null}));
+app.get('/login',(req,res)=>res.redirect('/auth/discord'));
 
-app.post('/login', async (req,res)=>{
-  const loginEmail = String(req.body.email || '').trim().toLowerCase();
-  const u=db.users.find(x=>String(x.email || '').toLowerCase()===loginEmail);
-  if(!u||!bcrypt.compareSync(req.body.password,u.password)) return res.render('auth/login',{error:'Email ou mot de passe incorrect.'});
-  if(u.role === 'Banni') return res.render('auth/login',{error:'Compte banni.'});
+app.get('/auth/discord',(req,res)=>{
+  if(!discordConfigured()) return res.status(500).render('error',{msg:'Connexion Discord non configurée. Ajoute DISCORD_CLIENT_ID, DISCORD_CLIENT_SECRET et DISCORD_CALLBACK_URL dans Railway.'});
+  res.redirect(discordOauthUrl());
+});
+
+app.get('/auth/discord/callback', async (req,res)=>{
   try{
-    startPending2fa(req,u);
-    await createAndSend2fa(req,u);
-    res.redirect('/verify');
+    if(!discordConfigured()) return res.status(500).render('error',{msg:'Connexion Discord non configurée.'});
+    if(!req.query.code) return res.redirect('/');
+    const discordUser = await exchangeDiscordCode(String(req.query.code));
+    const user = findOrCreateDiscordUser(discordUser);
+    if(user.role === 'Banni') return res.status(403).render('error',{msg:'Compte banni.'});
+    req.session.user = publicUser(user);
+    res.redirect('/dashboard');
   }catch(e){
-    console.error('2FA send error:', e.message);
-    return res.render('auth/login',{error:'Impossible d’envoyer le code A2F. Vérifie RESEND_API_KEY sur Railway.'});
+    console.error('Discord OAuth error:', e.message);
+    res.status(500).render('error',{msg:'Erreur connexion Discord : ' + e.message});
   }
 });
+
+app.post('/login',(req,res)=>res.redirect('/auth/discord'));
 app.get('/verify',(req,res)=>{
   if(!req.session.pending2fa) return res.redirect('/login');
   res.render('auth/verify',{error:null,email:req.session.pending2fa.email,success:null});
@@ -233,27 +336,8 @@ app.post('/verify/resend', async (req,res)=>{
   }
 });
 
-app.get('/register',(req,res)=>res.render('auth/register',{error:null}));
-
-app.post('/register', async (req,res)=>{
-  const email = String(req.body.email || '').trim().toLowerCase();
-  const password = String(req.body.password || '');
-  if(!/^\S+@\S+\.\S+$/.test(email)) return res.render('auth/register',{error:'Adresse e-mail invalide.'});
-  if(password.length < 4) return res.render('auth/register',{error:'Mot de passe trop court.'});
-  if(db.users.find(u=>String(u.email || '').toLowerCase()===email)) return res.render('auth/register',{error:'Email déjà utilisé.'});
-  const username=String(req.body.username || email.split('@')[0]).trim() || email.split('@')[0];
-  const u={id:nextId('users'),email,password:bcrypt.hashSync(password,10),role:'Membre',username,avatar:'/img/logo.png',created_at:now(),last_login:null};
-  db.users.push(u); saveDb();
-  try{
-    startPending2fa(req,u);
-    await createAndSend2fa(req,u);
-    res.redirect('/verify');
-  }catch(e){
-    console.error('2FA send error:', e.message);
-    db.users = db.users.filter(x=>x.id!==u.id); saveDb();
-    res.render('auth/register',{error:'Compte créé impossible : envoi du code A2F impossible. Vérifie RESEND_API_KEY sur Railway.'});
-  }
-});
+app.get('/register',(req,res)=>res.redirect('/auth/discord'));
+app.post('/register',(req,res)=>res.redirect('/auth/discord'));
 
 app.get('/logout',(req,res)=>req.session.destroy(()=>res.redirect('/')));
 
@@ -319,7 +403,7 @@ app.post('/client/email/request',requireAuth,async (req,res)=>{
     req.session.emailMessage='Code de confirmation envoyé à la nouvelle adresse.';
   }catch(e){
     console.error('Email change code error:', e.message);
-    req.session.emailError='Impossible d’envoyer le code. Vérifie RESEND_API_KEY sur Railway.';
+    req.session.emailError='Impossible d’envoyer le code. Vérifie les variables Gmail.';
   }
   res.redirect('/client');
 });
