@@ -1,0 +1,28 @@
+<%- include('../partials/header') %>
+<section class="panel">
+  <h1>Commandes</h1>
+  <p class="muted">Quand tu changes le statut puis que tu cliques sur <b>OK</b>, les factures, licences et statistiques sont mises à jour automatiquement.</p>
+  <table>
+    <tr><th>ID</th><th>Client</th><th>Produit</th><th>Total</th><th>Status</th><th>Action</th></tr>
+    <% orders.forEach(o=>{ %>
+      <tr>
+        <td>#<%= o.id %></td>
+        <td><%= o.email %></td>
+        <td><%= o.name %></td>
+        <td><%= o.total %></td>
+        <td><span class="badge"><%= o.status %></span></td>
+        <td>
+          <form method="post" action="/staff/orders/<%= o.id %>/status" class="miniForm">
+            <select name="status">
+              <% ['En attente','Payée','En développement','Livrée','Terminée','Annulée'].forEach(st=>{ %>
+                <option value="<%= st %>" <%= o.status===st ? 'selected' : '' %>><%= st %></option>
+              <% }) %>
+            </select>
+            <button>OK</button>
+          </form>
+        </td>
+      </tr>
+    <% }) %>
+  </table>
+</section>
+<%- include('../partials/footer') %>

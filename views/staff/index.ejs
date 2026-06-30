@@ -1,0 +1,18 @@
+<%- include('../partials/header') %>
+<section class="panel">
+  <h1>👥 Panel staff</h1>
+  <p>Connecté en <b><%= user.role %></b></p>
+  <section class="stats">
+    <div><b><%= stats.users %></b><span>Utilisateurs</span></div>
+    <div><b><%= stats.openTickets %>/<%= stats.tickets %></b><span>Tickets ouverts / total</span></div>
+    <div><b><%= stats.orders %></b><span>Commandes</span></div>
+    <div><b><%= stats.finishedOrders %></b><span>Terminées</span></div>
+    <div><b><%= stats.revenue %></b><span>Revenus</span></div>
+  </section>
+  <div class="grid3">
+    <a class="mini" href="/staff/users">Utilisateurs</a>
+    <a class="mini" href="/tickets">Tickets</a>
+    <a class="mini" href="/staff/orders">Commandes</a>
+  </div>
+</section>
+<%- include('../partials/footer') %>

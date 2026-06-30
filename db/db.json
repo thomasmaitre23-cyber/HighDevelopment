@@ -1,0 +1,73 @@
+{
+  "users": [
+    {
+      "id": 1,
+      "email": "highdevelopment@tbhwf.com",
+      "password": "$2a$10$gm//wTt9Ye8iAX3xwMFaKuoy4UuIX2A9j589Mb8.4/n3Mltx4Vd8W",
+      "role": "Owner",
+      "username": "Owner HighDevelopment",
+      "avatar": "/img/logo.png",
+      "created_at": "2026-06-30 18:10:18",
+      "last_login": null
+    }
+  ],
+  "login_history": [],
+  "products": [
+    {
+      "id": 1,
+      "name": "Bot Discord Modérations",
+      "description": "Bot Discord complet pour gérer modération, logs, sanctions et commandes staff.",
+      "price": "10 €",
+      "image": "/img/hd-bot.png",
+      "type": "bot"
+    },
+    {
+      "id": 2,
+      "name": "Bot Discord Custom",
+      "description": "Bot Discord personnalisé selon la demande client avec fonctionnalités sur mesure.",
+      "price": "20 €",
+      "image": "/img/hd-bot.png",
+      "type": "bot"
+    },
+    {
+      "id": 3,
+      "name": "Script FiveM Custom",
+      "description": "Script FiveM personnalisé, optimisé et sécurisé selon ton serveur.",
+      "price": "25 €",
+      "image": "/img/script-fivem.png",
+      "type": "fivem"
+    },
+    {
+      "id": 4,
+      "name": "Base FiveM High Development",
+      "description": "Base FiveM complète : 35 €/mois, 120 €/an ou Lifetime 200 €.",
+      "price": "35 €/mois • 120 €/an • 200 € Lifetime",
+      "image": "/img/base-fivem.png",
+      "type": "fivem"
+    },
+    {
+      "id": 5,
+      "name": "Logo",
+      "description": "Logo personnalisé pour serveur Discord, FiveM ou projet web.",
+      "price": "5 € / unité",
+      "image": "/img/logo.png",
+      "type": "design"
+    }
+  ],
+  "orders": [],
+  "tickets": [],
+  "ticket_messages": [],
+  "invoices": [],
+  "licenses": [],
+  "twofa_codes": [
+    {
+      "id": 1,
+      "user_id": 1,
+      "code_hash": "$2a$10$AIY8TsVoKQsavoGUX60aI.E67gNnFjaoLfQNwaWpAX63Rv8DlKd9m",
+      "attempts": 0,
+      "created_at": "2026-06-30T18:10:36.931Z",
+      "expires_at": "2026-06-30T18:15:36.931Z",
+      "ip": "::1"
+    }
+  ]
+}

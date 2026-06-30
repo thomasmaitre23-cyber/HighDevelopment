@@ -1,0 +1,33 @@
+<%- include('../partials/header') %>
+<section class="panel">
+  <h1>Ticket #<%= ticket.id %> — <%= ticket.subject %></h1>
+  <p>Status : <span class="badge"><%= ticket.status %></span> Client : <%= ticket.email %></p>
+
+  <% if(user && ['Owner','Admin','Modo'].includes(user.role)){ %>
+  <div class="quickReplies">
+    <button class="btn small" data-auto-reply="Bonjour, merci pour votre demande. Un membre du staff va vous répondre rapidement.">Réponse auto : attente</button>
+    <button class="btn small" data-auto-reply="Pouvez-vous nous envoyer plus d’informations, captures d’écran ou détails sur votre demande ?">Réponse auto : détails</button>
+    <button class="btn small" data-auto-reply="Votre demande est prise en charge. Nous revenons vers vous dès que possible.">Réponse auto : prise en charge</button>
+    <button class="btn small" data-auto-reply="Merci pour votre commande. Le traitement vient de commencer.">Réponse auto : commande</button>
+  </div>
+  <% } %>
+
+  <div id="chat" class="chat">
+    <% messages.forEach(m=>{ %>
+      <div class="msg">
+        <img src="<%= m.avatar %>">
+        <div>
+          <b><%= m.username %> <span><%= m.role %></span></b>
+          <p><%= m.message %></p>
+          <% if(m.image_url){ %><a href="<%= m.image_url %>" target="_blank"><img class="ticket-img" src="<%= m.image_url %>"></a><% } %>
+          <small><%= m.created_at %></small>
+        </div>
+      </div>
+    <% }) %>
+  </div>
+  <form id="chatForm" class="chatForm"><input id="message" placeholder="Écrire un message ou CTRL+V une image..." autocomplete="off"><button class="btn">Envoyer</button></form>
+  <% if(user && ['Owner','Admin','Modo'].includes(user.role)){ %><form method="post" action="/tickets/<%= ticket.id %>/close"><button class="btn ghost">Fermer le ticket + envoyer transcript</button></form><% } %>
+</section>
+<script>window.TICKET_ID=<%= ticket.id %>;window.USER_ID=<%= user.id %>;</script>
+<script src="/js/tickets.js"></script>
+<%- include('../partials/footer') %>

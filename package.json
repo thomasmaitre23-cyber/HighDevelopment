@@ -1,0 +1,19 @@
+{
+  "name": "highdevelopment-pro-fixed",
+  "version": "1.0.1",
+  "description": "HighDevelopment sans better-sqlite3",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "ejs": "^3.1.10",
+    "express": "^4.21.2",
+    "express-session": "^1.18.1",
+    "multer": "^1.4.5-lts.1",
+    "socket.io": "^4.8.1",
+    "nodemailer": "^6.9.16",
+    "dotenv": "^16.4.7"
+  }
+}

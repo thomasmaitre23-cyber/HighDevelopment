@@ -1,0 +1,36 @@
+<%- include('../partials/header') %>
+<section class="panel">
+  <h1>📦 Espace client</h1>
+  <div class="grid3">
+    <a class="mini" href="#profil">Profil</a>
+    <a class="mini" href="#orders">Commandes</a>
+    <a class="mini" href="#factures">Factures</a>
+    <a class="mini" href="/tickets">Tickets</a>
+  </div>
+
+  <h2 id="profil">👤 Mon profil</h2>
+  <% if(emailMessage){ %><p class="ok"><%= emailMessage %></p><% } %>
+  <% if(emailError){ %><p class="err"><%= emailError %></p><% } %>
+  <div class="card soft-card">
+    <p><b>Adresse e-mail actuelle :</b> <%= user.email %></p>
+    <form method="post" action="/client/email/request" class="inline-form">
+      <input name="new_email" type="email" placeholder="Nouvelle adresse e-mail" required>
+      <button class="btn">Envoyer le code</button>
+    </form>
+    <% if(pendingEmailChange){ %>
+      <form method="post" action="/client/email/confirm" class="inline-form verify-mail">
+        <p>Un code a été envoyé à <b><%= pendingEmailChange.newEmail %></b>.</p>
+        <input name="code" inputmode="numeric" maxlength="6" placeholder="Code à 6 chiffres" required>
+        <button class="btn">Confirmer l’e-mail</button>
+      </form>
+    <% } %>
+  </div>
+
+  <h2 id="orders">Commandes</h2>
+  <table><tr><th>Produit</th><th>Total</th><th>Status</th><th>Date</th></tr><% orders.forEach(o=>{ %><tr><td><%= o.name %></td><td><%= o.total %></td><td><%= o.status %></td><td><%= o.created_at %></td></tr><% }) %></table>
+  <h2 id="factures">Factures</h2>
+  <table><tr><th>ID</th><th>Total</th><th>Status</th><th>Date</th></tr><% invoices.forEach(i=>{ %><tr><td>#<%= i.id %></td><td><%= i.total %></td><td><%= i.status %></td><td><%= i.created_at %></td></tr><% }) %></table>
+  <h2>Licences</h2>
+  <table><tr><th>Produit</th><th>Clé</th></tr><% licenses.forEach(l=>{ %><tr><td><%= l.product_name || l.name || 'Produit' %></td><td><%= l.license_key || l.key %></td></tr><% }) %></table>
+</section>
+<%- include('../partials/footer') %>
